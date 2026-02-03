@@ -58,9 +58,12 @@ header {
     margin-bottom: 1rem;
 }
 
-.logo-icon {
-    font-size: 3rem;
+.logo-image {
+    width: 120px;
+    height: auto;
     filter: drop-shadow(0 0 15px var(--primary));
+    margin-bottom: 1rem;
+    border-radius: 12px;
 }
 
 header h1 {
