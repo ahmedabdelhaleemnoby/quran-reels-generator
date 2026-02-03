@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quran Reels Generator | مولد فيديوهات القرآن</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>مولد فيديوهات القرآن الكريم</h1>
+      <p>أنشئ فيديوهات قصيرة (Reels) لآياتك المفضلة بسهولة</p>
+    </header>
+
+    <main>
+      <section class="generator-form">
+        <div class="form-group">
+          <label for="reciter">اختر القارئ</label>
+          <select id="reciter">
+            <option value="">جاري التحميل...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="surah">اختر السورة</label>
+          <select id="surah">
+            <option value="">جاري التحميل...</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fromAyah">من آية</label>
+            <input type="number" id="fromAyah" min="1" value="1">
+          </div>
+          <div class="form-group">
+            <label for="toAyah">إلى آية</label>
+            <input type="number" id="toAyah" min="1" value="7">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="background">الخلفية (اختياري)</label>
+          <input type="file" id="background" accept="video/mp4,image/*">
+          <small>إذا لم تختر ملفًا، سيتم استخدام خلفية افتراضية هادئة</small>
+        </div>
+
+        <button id="generateBtn" class="primary-btn">توليد الفيديو</button>
+      </section>
+
+      <section id="resultSection" class="result-section hidden">
+        <div class="loader-container" id="loader">
+          <div class="spinner"></div>
+          <p>جاري معالجة الفيديو... قد يستغرق هذا بضع دقائق</p>
+        </div>
+        <div id="videoPreview" class="video-preview hidden">
+          <h3>الفيديو الناتج:</h3>
+          <video id="outputVideo" controls></video>
+          <a id="downloadBtn" href="#" download class="secondary-btn">تحميل الفيديو</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>تعمل هذه الأداة محليًا وتستخدم FFmpeg و ImageMagick</p>
+    </footer>
+  </div>
+  <script src="script.js"></script>
+</body>
+
+</html>
