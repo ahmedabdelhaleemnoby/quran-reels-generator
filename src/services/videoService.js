@@ -54,45 +54,85 @@ const createTextOverlay = async (text, outputPath) => {
 
     // Load font
     const fontPath = '/System/Library/Fonts/Supplemental/Arial.ttf';
+    let fontSize = 70; // Slightly larger font
     if (fs.existsSync(fontPath)) {
         const font = PImage.registerFont(fontPath, 'Arial');
         await new Promise((resolve) => font.load(() => resolve()));
-        ctx.font = "60pt 'Arial'";
+        ctx.font = `${fontSize}pt 'Arial'`;
     } else {
-        ctx.font = "60pt sans-serif";
+        ctx.font = `${fontSize}pt sans-serif`;
     }
 
-    // Explicitly set background to fully transparent
-    // PureImage images are transparent by default, but let's be sure
     ctx.clearRect(0, 0, width, height);
 
-    // Add a very subtle dark vignette to make white text pop
-    // This also helps verify if overlay transparency is working
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // 30% black
-    ctx.fillRect(0, height * 0.2, width, height * 0.6); // Center area backdrop
-
+    // Render configuration
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
+    const maxWidth = width * 0.8; // 80% of width for text
+    const lineHeight = fontSize * 1.5;
 
-    const lines = text.split('\n\n');
-    let y = height / 2 - (lines.length * 60);
+    // Word Wrap and Process Arabic
+    const processArabicText = (rawText) => {
+        const reshaped = reshaper.ArabicShaper.convertArabic(rawText);
+        return bidi.getReorderedString(reshaped, bidi.getEmbeddingLevels(reshaped));
+    };
 
-    lines.forEach(line => {
-        if (!line.trim()) return;
-        
-        // 1. Reshape Arabic
-        const reshaped = reshaper.ArabicShaper.convertArabic(line);
-        
-        // 2. Apply Bidi (RTL)
-        const bidiText = bidi.getReorderedString(reshaped, bidi.getEmbeddingLevels(reshaped));
-        
-        // 3. Render
-        ctx.fillText(bidiText, width / 2, y);
-        y += 150;
+    const wrapText = (text, maxWidth) => {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = words[0];
+
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const testLine = currentLine + " " + word;
+            // Note: PureImage measureText is basic, using a rough estimate if it fails
+            const metrics = ctx.measureText(processArabicText(testLine));
+            if (metrics.width > maxWidth) {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = testLine;
+            }
+        }
+        lines.push(currentLine);
+        return lines;
+    };
+
+    const paragraphs = text.split('\n\n');
+    let allRenderLines = [];
+    
+    paragraphs.forEach(p => {
+        const wrappedLines = wrapText(p.trim(), maxWidth);
+        allRenderLines = allRenderLines.concat(wrappedLines);
+        allRenderLines.push(""); // Spacer between ayahs
+    });
+
+    // Remove last spacer
+    if (allRenderLines.length > 0 && allRenderLines[allRenderLines.length-1] === "") {
+        allRenderLines.pop();
+    }
+
+    // Calculate vertical centering
+    const totalTextHeight = allRenderLines.length * lineHeight;
+    let y = (height - totalTextHeight) / 2 + lineHeight;
+
+    // Background backdrop for readability
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    const bgPadding = 60;
+    ctx.fillRect(width * 0.05, (height - totalTextHeight) / 2 - bgPadding, width * 0.9, totalTextHeight + bgPadding * 2);
+
+    // Render lines
+    ctx.fillStyle = '#ffffff';
+    allRenderLines.forEach(line => {
+        if (line.trim()) {
+            const bidiLine = processArabicText(line);
+            ctx.fillText(bidiLine, width / 2, y);
+        }
+        y += lineHeight;
     });
 
     await PImage.encodePNGToStream(img, fs.createWriteStream(outputPath));
-    console.log('Text overlay created with Arabic support & transparency');
+    console.log('Text overlay created with wrapping and layout optimization');
 };
 
 /**
