@@ -15,7 +15,7 @@ const reciters = [
 
 const getSurahs = async () => {
     try {
-        const response = await axios.get(`${QURAN_API_BASE}/surah`, { timeout: 15000 });
+        const response = await axios.get(`${QURAN_API_BASE}/surah`, { timeout: 60000 });
         return response.data.data;
     } catch (error) {
         console.error('Error fetching surahs:', error);
@@ -25,7 +25,7 @@ const getSurahs = async () => {
 
 const getAyahs = async (surahNumber, fromAyah, toAyah) => {
     try {
-        const response = await axios.get(`${QURAN_API_BASE}/surah/${surahNumber}`, { timeout: 15000 });
+        const response = await axios.get(`${QURAN_API_BASE}/surah/${surahNumber}`, { timeout: 60000 });
         const allAyahs = response.data.data.ayahs;
         return allAyahs.filter(ayah => ayah.numberInSurah >= fromAyah && ayah.numberInSurah <= toAyah);
     } catch (error) {

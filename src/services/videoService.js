@@ -30,7 +30,7 @@ const downloadFile = async (url, dest) => {
         url,
         method: 'GET',
         responseType: 'stream',
-        timeout: 30000
+        timeout: 120000 // 120 seconds timeout (increased from 30s)
     });
     response.data.pipe(writer);
     return new Promise((resolve, reject) => {
