@@ -21,10 +21,18 @@
 
 ## 🚀 طريقة التشغيل
 
-1. **تثبيت المتطلبات (macOS)**:
-   ```bash
-   brew install ffmpeg
-   ```
+1. **تثبيت المتطلبات (FFmpeg)**:
+   - **نظام macOS**:
+     ```bash
+     brew install ffmpeg
+     ```
+   - **نظام Windows**:
+     - قم بتحميل FFmpeg من الموقع الرسمي [ffmpeg.org](https://ffmpeg.org/download.html).
+     - أو استخدم `winget` في الـ Terminal:
+       ```powershell
+       winget install ffmpeg
+       ```
+     - تأكد من إضافة مسار المجلد `bin` الخاص بـ FFmpeg إلى متغيرات البيئة (PATH).
 
 2. **تثبيت المكتبات**:
    ```bash
