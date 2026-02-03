@@ -26,11 +26,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Handle Generation
     generateBtn.addEventListener('click', async () => {
+        const backgroundFile = document.getElementById('background').files[0];
+        
+        let backgroundData = null;
+        
+        // Convert image to base64 if selected
+        if (backgroundFile) {
+            const reader = new FileReader();
+            backgroundData = await new Promise((resolve) => {
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(backgroundFile);
+            });
+        }
+        
         const payload = {
             reciterId: reciterSelect.value,
             surahNumber: parseInt(surahSelect.value),
             fromAyah: parseInt(fromAyahInput.value),
-            toAyah: parseInt(toAyahInput.value)
+            toAyah: parseInt(toAyahInput.value),
+            backgroundData: backgroundData
         };
 
         if (!payload.reciterId || !payload.surahNumber) {

@@ -66,7 +66,7 @@ const createTextOverlay = async (text, outputPath) => {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
 
-    // Simple text rendering (Arabic text as-is)
+    // Simple text rendering
     const lines = text.split('\n');
     let y = height / 2 - (lines.length * 40);
     lines.forEach(line => {
@@ -108,8 +108,37 @@ const generateReel = async (options) => {
 
     // 2. Prepare Background
     let backgroundPath = customBackgroundPath;
-    if (!backgroundPath || !fs.existsSync(backgroundPath)) {
+    
+    // If custom background is provided, convert to video
+    if (backgroundPath && fs.existsSync(backgroundPath)) {
+        console.log('Using custom background:', backgroundPath);
+        
+        // Check if it's already a video
+        const ext = path.extname(backgroundPath).toLowerCase();
+        if (ext === '.jpg' || ext === '.png' || ext === '.jpeg') {
+            // Convert image to video
+            const videoBackgroundPath = path.join(TEMP_DIR, `bg_video_${timestamp}.mp4`);
+            await new Promise((resolve, reject) => {
+                ffmpeg()
+                    .input(backgroundPath)
+                    .loop(60)
+                    .outputOptions([
+                        '-pix_fmt yuv420p',
+                        '-t 60',
+                        '-vf scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+                    ])
+                    .save(videoBackgroundPath)
+                    .on('end', () => {
+                        console.log('Background image converted to video');
+                        resolve();
+                    })
+                    .on('error', reject);
+            });
+            backgroundPath = videoBackgroundPath;
+        }
+    } else {
         // Create black background image using pureimage
+        console.log('No custom background, using default black');
         const bgImagePath = path.join(TEMP_DIR, `bg_${timestamp}.png`);
         const bgImg = PImage.make(1080, 1920);
         const bgCtx = bgImg.getContext('2d');
