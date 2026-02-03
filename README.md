@@ -1,102 +1,72 @@
-# Quran Reels Generator 🎬
+# صانع مقاطع القرآن الكريم 🎬 (Quran Reels Generator)
 
-A local web application for generating beautiful Quranic video reels with synchronized audio and Arabic text overlays.
+تطبيق ويب محلي متكامل لتحويل آيات القرآن الكريم إلى مقاطع فيديو احترافية (Reels/Shorts) مع تلاوات عطرة وتنسيق نصوص ذكي.
 
-## ✨ Features
+## ✨ المميزات الرئيسية
 
-- 📖 Generate video reels for any Quranic verses (Ayahs)
-- 🎙️ Multiple renowned reciters to choose from
-- 🎨 Customizable backgrounds (or fallback to solid color)
-- 🔤 Arabic text overlays with proper rendering
-- 🌐 Fully RTL (Right-to-Left) user interface
-- 💾 Local processing - no cloud dependencies
+- 📖 **توليد تلقائي**: اختر أي سورة ونطاق آيات لتحويلها فوراً إلى مقطع فيديو.
+- 🎙️ **تعدد القراء**: دعم لأشهر القراء (المنشاوي، عبد الباسط، العفاسي، المعيقلي، وغيرهم).
+- 🖼️ **خلفيات مخصصة**: إمكانية رفع صورك الخاصة كخلفية للمقاطع أو استخدام الخلفية الافتراضية.
+- ✍️ **معالجة متطورة للنصوص**: 
+  - ربط الحروف العربية بشكل صحيح (Shaping).
+  - دعم الترتيب من اليمين لليسار (Bidi Support).
+  - التفاف تلقائي للنصوص الطويلة لتناسب أبعاد الهاتف.
+- 📱 **أبعاد مثالية**: فيديوهات عمودية بدقة عالية (1080x1920) جاهزة للنشر على Instagram Reels و TikTok.
+- 🔒 **خصوصية وأداء**: تتم جميع عمليات المعالجة محلياً على جهازك؛ لا يتم رفع ملفاتك إلى أي خادم خارجي.
 
-## 🚀 Quick Start
+## 🛠️ المتطلبات التقنية
 
-### Prerequisites
+- **Node.js** (v16 أو أحدث).
+- **FFmpeg**: الأداة الأساسية لمعالجة وتحويل الفيديو والصوت.
 
-- **Node.js** (v14 or higher)
-- **FFmpeg** - for video processing
-- **macOS** (currently optimized for Mac)
+## 🚀 طريقة التشغيل
 
-### Installation
-
-1. **Install system dependencies**:
+1. **تثبيت المتطلبات (macOS)**:
    ```bash
    brew install ffmpeg
    ```
 
-2. **Install Node.js dependencies**:
+2. **تثبيت المكتبات**:
    ```bash
    npm install
    ```
 
-3. **Start the server**:
+3. **بدء التشغيل**:
    ```bash
    node server.js
    ```
 
-4. **Open your browser**:
-   Navigate to [http://localhost:3005](http://localhost:3005)
+4. **الوصول للتطبيق**:
+   افتح المتصفح على الرابط: [http://localhost:3005](http://localhost:3005)
 
-## 📁 Project Structure
+## 📁 هيكلية المشروع
 
 ```
 quran-reels-generator/
-├── public/              # Frontend assets
-│   ├── index.html      # Main UI
-│   ├── style.css       # RTL-optimized styling
-│   └── script.js       # Frontend logic
+├── public/              # واجهة المستخدم (HTML, CSS, JS)
 ├── src/
-│   ├── controllers/    # API controllers
-│   ├── services/       # Business logic (Quran, Video)
-│   └── routes/         # API routes
-├── output/             # Generated videos
-├── uploads/            # Temporary files
-└── server.js           # Express server
+│   ├── controllers/    # منطق معالجة الطلبات
+│   └── services/       # منطق توليد الفيديو وجلب البيانات
+├── output/             # المقاطع النهائية الناتجة
+├── uploads/            # الملفات المؤقتة وأي خلفيات مرفوعة
+└── server.js           # خادم الويب (Express)
 ```
 
-## 🎯 Usage
+## ⚙️ التقنيات المستخدمة
 
-1. **Select a Reciter** from the dropdown
-2. **Choose a Surah** (Chapter)
-3. **Specify Ayah Range** (From - To)
-4. **Click "Generate Video"** and wait for processing
-5. **Preview and Download** your generated reel
+- **Backend**: Node.js & Express.
+- **Video Processing**: FFmpeg (via fluent-ffmpeg).
+- **Arabic Rendering**: `pureimage`, `arabic-persian-reshaper`, `bidi-js`.
+- **Data APIs**: 
+  - [AlQuran Cloud](https://alquran.cloud) - للنصوص والبيانات القرآنية.
+  - [EveryAyah](https://everyayah.com) - للملفات الصوتية.
 
-## 🛡️ Technologies
+## 📝 ملاحظات هامة
 
-- **Backend**: Node.js, Express.js
-- **Video Processing**: FFmpeg, fluent-ffmpeg
-- **Text Rendering**: pureimage
-- **APIs**: 
-  - [AlQuran Cloud API](https://alquran.cloud) - Quranic text
-  - [EveryAyah](https://everyayah.com) - Audio recitations
-
-## 📝 Notes
-
-- Videos are generated at 1080x1920 (vertical format for Reels/Stories)
-- Default background is solid black if no custom background is provided
-- All processing happens locally on your machine
-- Generated videos are saved in the `output/` directory
-
-## 🐛 Known Issues
-
-- Arabic text rendering currently uses system Arial font
-- For best results, ensure stable internet connection for API calls
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to submit issues or pull requests.
-
-## 📄 License
-
-ISC
-
-## 👨‍💻 Author
-
-Ahmed Abu Zyad
+- التطبيق يحتاج اتصالاً بالإنترنت في المرة الأولى لجلب بيانات الآيات والملفات الصوتية.
+- يتم حفظ الفيديوهات النهائية في مجلد `output/` باسم يحتوي على تاريخ التوليد.
 
 ---
 
-**Made with ❤️ for the Quran**
+**تم التطوير بكل حب لنشر كتاب الله 📖❤️**
+**بواسطة: أحمد أبو زياد**

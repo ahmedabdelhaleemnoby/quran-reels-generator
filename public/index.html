@@ -4,70 +4,130 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quran Reels Generator | مولد فيديوهات القرآن</title>
-  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;700&display=swap"
+  <title>Quran Reels Generator | صانع مقاطع القرآن الكريم</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+  <div class="bg-glow"></div>
   <div class="container">
     <header>
-      <h1>مولد فيديوهات القرآن الكريم</h1>
-      <p>أنشئ فيديوهات قصيرة (Reels) لآياتك المفضلة بسهولة</p>
+      <div class="logo-area">
+        <span class="logo-icon">📖</span>
+        <h1>صانع مقاطع القرآن الكريم</h1>
+        <div class="badge">Reels Generator</div>
+      </div>
+      <p class="subtitle">حول الآيات القرآنية إلى مقاطع فيديو احترافية بلمسة واحدة</p>
     </header>
 
     <main>
-      <section class="generator-form">
-        <div class="form-group">
-          <label for="reciter">اختر القارئ</label>
-          <select id="reciter">
-            <option value="">جاري التحميل...</option>
-          </select>
+      <section class="generator-card">
+        <div class="card-header">
+          <h2>إعدادات المقطع</h2>
         </div>
 
-        <div class="form-group">
-          <label for="surah">اختر السورة</label>
-          <select id="surah">
-            <option value="">جاري التحميل...</option>
-          </select>
-        </div>
-
-        <div class="form-row">
+        <div class="form-container">
           <div class="form-group">
-            <label for="fromAyah">من آية</label>
-            <input type="number" id="fromAyah" min="1" value="1">
+            <label for="reciter">
+              <span class="icon">🎙️</span> القارئ
+            </label>
+            <select id="reciter">
+              <option value="">جاري التحميل...</option>
+            </select>
           </div>
+
           <div class="form-group">
-            <label for="toAyah">إلى آية</label>
-            <input type="number" id="toAyah" min="1" value="7">
+            <label for="surah">
+              <span class="icon">🕌</span> السورة
+            </label>
+            <select id="surah">
+              <option value="">جاري التحميل...</option>
+            </select>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label for="background">الخلفية (اختياري)</label>
-          <input type="file" id="background" accept="video/mp4,image/*">
-          <small>إذا لم تختر ملفًا، سيتم استخدام خلفية افتراضية هادئة</small>
-        </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fromAyah">من آية</label>
+              <input type="number" id="fromAyah" min="1" value="1">
+            </div>
+            <div class="form-group">
+              <label for="toAyah">إلى آية</label>
+              <input type="number" id="toAyah" min="1" value="7">
+            </div>
+          </div>
 
-        <button id="generateBtn" class="primary-btn">توليد الفيديو</button>
+          <div class="form-group">
+            <label for="background">
+              <span class="icon">🖼️</span> خلفية مخصصة
+            </label>
+            <div class="file-input-wrapper">
+              <input type="file" id="background" accept="video/mp4,image/*" class="file-input">
+              <div class="file-input-btn">
+                <span class="btn-icon">📁</span>
+                <span class="btn-text">اختر صورة أو فيديو</span>
+              </div>
+              <div id="fileName" class="file-name">لم يتم اختيار ملف</div>
+            </div>
+            <p class="input-info">سيتم استخدام خلفية افتراضية إذا لم يتم اختيار ملف</p>
+          </div>
+
+          <button id="generateBtn" class="generate-btn">
+            <span class="btn-content">توليد المقطع الآن</span>
+            <div class="btn-glow"></div>
+          </button>
+        </div>
       </section>
 
-      <section id="resultSection" class="result-section hidden">
-        <div class="loader-container" id="loader">
+      <section id="resultSection" class="result-card hidden">
+        <div id="loader" class="loader-container">
           <div class="spinner"></div>
-          <p>جاري معالجة الفيديو... قد يستغرق هذا بضع دقائق</p>
+          <p class="processing-text">جاري معالجة الصوت والنصوص وتوليد المشاهد...</p>
+          <p class="sub-processing-text">قد يستغرق ذلك بضع دقائق حسب طول الآيات</p>
         </div>
-        <div id="videoPreview" class="video-preview hidden">
-          <h3>الفيديو الناتج:</h3>
-          <video id="outputVideo" controls></video>
-          <a id="downloadBtn" href="#" download class="secondary-btn">تحميل الفيديو</a>
+
+        <div id="videoPreview" class="video-preview-container hidden">
+          <div class="preview-header">
+            <h3>جاهز للمشاركة! ✅</h3>
+          </div>
+          <div class="video-wrapper">
+            <video id="outputVideo" controls></video>
+          </div>
+          <div class="action-buttons">
+            <a id="downloadBtn" href="#" download class="download-btn">
+              <span>تحميل الفيديو</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-section">
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-icon">📱</span>
+            <h4>أبعاد مثالية</h4>
+            <p>فيديوهات عمودية (1080x1920) مناسبة لـ Reels و TikTok و Stories.</p>
+          </div>
+          <div class="info-item">
+            <span class="info-icon">✍️</span>
+            <h4>خطوط عربية</h4>
+            <p>معالجة ذكية للنصوص لضمان ظهور الكلمات بشكل صحيح وواضح.</p>
+          </div>
+          <div class="info-item">
+            <span class="info-icon">🔒</span>
+            <h4>خصوصية تامة</h4>
+            <p>تتم معالجة جميع الفيديوهات على جهازك الشخصي دون الحاجة لرفع بياناتك.</p>
+          </div>
         </div>
       </section>
     </main>
 
     <footer>
-      <p>تعمل هذه الأداة محليًا وتستخدم FFmpeg و ImageMagick</p>
+      <p>© 2026 صناع المحتوى القرآني | تم التطوير للتيسير في نشر كتاب الله</p>
     </footer>
   </div>
   <script src="script.js"></script>

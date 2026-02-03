@@ -136,6 +136,23 @@ const createTextOverlay = async (text, outputPath) => {
 };
 
 /**
+ * Fetches a random nature background from LoremFlickr
+ */
+const fetchRandomBackground = async (outputPath) => {
+    console.log('Fetching random nature background from LoremFlickr...');
+    // Using nature, landscape, and sky tags to get relevant serenity
+    const url = 'https://loremflickr.com/1080/1920/nature,landscape,sky/all';
+    try {
+        await downloadFile(url, outputPath);
+        console.log('Random background fetched successfully');
+        return true;
+    } catch (error) {
+        console.error('Failed to fetch random background:', error);
+        return false;
+    }
+};
+
+/**
  * Processes the video generation
  */
 const generateReel = async (options) => {
@@ -143,7 +160,7 @@ const generateReel = async (options) => {
     const timestamp = Date.now();
     const finalOutputPath = path.join(OUTPUT_DIR, `reel_${timestamp}.mp4`);
     
-    console.log('Starting generateReel with background:', customBackgroundPath);
+    console.log('Starting generateReel. Custom background:', customBackgroundPath || 'None');
 
     // 1. Download audio files
     const audioFiles = [];
@@ -170,26 +187,37 @@ const generateReel = async (options) => {
     let backgroundPath = options.backgroundPath;
     let finalBackgroundPath = '';
     
+    // Case 1: User provides a background
     if (backgroundPath && fs.existsSync(backgroundPath)) {
-        console.log('Using custom background file:', backgroundPath);
+        console.log('Processing custom background:', backgroundPath);
+    } else {
+        // Case 2: No custom background, fetch a random one
+        console.log('No custom background, fetching random nature image...');
+        const randomImgPath = path.join(TEMP_DIR, `random_bg_${timestamp}.jpg`);
+        const success = await fetchRandomBackground(randomImgPath);
+        if (success) {
+            backgroundPath = randomImgPath;
+        }
+    }
+
+    // Now process backgroundPath (whether custom or random)
+    if (backgroundPath && fs.existsSync(backgroundPath)) {
         const ext = path.extname(backgroundPath).toLowerCase();
         
         if (['.jpg', '.png', '.jpeg'].includes(ext)) {
-            console.log('Background is image, converting to video template (loop 1)...');
+            console.log('Converting background image to video template...');
             const videoPath = path.join(TEMP_DIR, `bg_vid_${timestamp}.mp4`);
             await new Promise((resolve, reject) => {
                 ffmpeg()
                     .input(backgroundPath)
-                    .inputOptions('-loop 1') // CRITICAL: Loop image input
+                    .inputOptions('-loop 1')
                     .outputOptions([
                         '-pix_fmt yuv420p',
-                        '-t 30', // 30 seconds
+                        '-t 30',
                         '-vf scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
                     ])
                     .save(videoPath)
-                    .on('start', (cmd) => console.log('BG Conversion Command:', cmd))
                     .on('end', () => {
-                        console.log('BG Image converted successfully');
                         finalBackgroundPath = videoPath;
                         resolve();
                     })
@@ -199,13 +227,13 @@ const generateReel = async (options) => {
                     });
             });
         } else {
-            console.log('Background is already a video or recognized format');
             finalBackgroundPath = backgroundPath;
         }
     }
 
+    // Final Fallback: Black background if everything fails
     if (!finalBackgroundPath || !fs.existsSync(finalBackgroundPath)) {
-        console.log('Creating default black background video...');
+        console.log('Using default black background template...');
         const bgVideoPath = path.join(TEMP_DIR, `bg_black_${timestamp}.mp4`);
         await new Promise((resolve, reject) => {
             ffmpeg()
@@ -217,10 +245,7 @@ const generateReel = async (options) => {
                     finalBackgroundPath = bgVideoPath;
                     resolve();
                 })
-                .on('error', (err) => {
-                    console.error('Default BG error:', err);
-                    reject(err);
-                });
+                .on('error', reject);
         });
     }
 

@@ -9,6 +9,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const downloadBtn = document.getElementById('downloadBtn');
     const fromAyahInput = document.getElementById('fromAyah');
     const toAyahInput = document.getElementById('toAyah');
+    const backgroundInput = document.getElementById('background');
+    const fileNameDisplay = document.getElementById('fileName');
+
+    // Handle background file selection UI
+    backgroundInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            fileNameDisplay.textContent = file.name;
+        } else {
+            fileNameDisplay.textContent = 'لم يتم اختيار ملف';
+        }
+    });
 
     // Fetch initial data
     try {
