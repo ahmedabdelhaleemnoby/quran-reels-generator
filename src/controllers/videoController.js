@@ -18,24 +18,33 @@ const generateVideo = async (req, res) => {
         let backgroundPath = null;
         
         // Check if user uploaded a background (base64)
-        if (backgroundData) {
+        if (backgroundData && backgroundData.includes('base64,')) {
+            console.log('Received background image data');
             const timestamp = Date.now();
             const matches = backgroundData.match(/^data:image\/(\w+);base64,(.+)$/);
             if (matches) {
                 const ext = matches[1];
                 const base64Data = matches[2];
-                backgroundPath = path.join(__dirname, '../../uploads', `bg_${timestamp}.${ext}`);
+                const bgFileName = `bg_upload_${timestamp}.${ext}`;
+                backgroundPath = path.resolve(path.join(__dirname, '../../uploads', bgFileName));
                 fs.writeFileSync(backgroundPath, Buffer.from(base64Data, 'base64'));
+                console.log('Saved uploaded background to:', backgroundPath);
+            } else {
+                console.warn('Invalid base64 image format received');
             }
         } else {
             // Fallback to default backgrounds directory
-            const bgDir = path.join(__dirname, '../../public/assets/backgrounds');
+            const bgDir = path.resolve(path.join(__dirname, '../../public/assets/backgrounds'));
+            console.log('Checking default backgrounds in:', bgDir);
             if (fs.existsSync(bgDir)) {
                 const files = fs.readdirSync(bgDir);
                 const bgFile = files.find(f => f.endsWith('.mp4') || f.endsWith('.jpg') || f.endsWith('.png'));
                 if (bgFile) {
                     backgroundPath = path.join(bgDir, bgFile);
+                    console.log('Using default background found:', backgroundPath);
                 }
+            } else {
+                console.log('Default backgrounds directory not found');
             }
         }
 

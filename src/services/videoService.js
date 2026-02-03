@@ -40,15 +40,19 @@ const downloadFile = async (url, dest) => {
 };
 
 /**
- * Creates a text overlay image using pureimage
+ * Creates a text overlay image using pureimage with Arabic support
  */
 const createTextOverlay = async (text, outputPath) => {
+    const reshaper = require('arabic-persian-reshaper');
+    const bidiFactory = require('bidi-js');
+    const bidi = bidiFactory();
+    
     const width = 1080;
     const height = 1920;
     const img = PImage.make(width, height);
     const ctx = img.getContext('2d');
 
-    // Use system font - Arial
+    // Load font
     const fontPath = '/System/Library/Fonts/Supplemental/Arial.ttf';
     if (fs.existsSync(fontPath)) {
         const font = PImage.registerFont(fontPath, 'Arial');
@@ -58,23 +62,37 @@ const createTextOverlay = async (text, outputPath) => {
         ctx.font = "60pt sans-serif";
     }
 
-    // Background (transparent)
-    ctx.fillStyle = 'rgba(0,0,0,0)';
-    ctx.fillRect(0, 0, width, height);
+    // Explicitly set background to fully transparent
+    // PureImage images are transparent by default, but let's be sure
+    ctx.clearRect(0, 0, width, height);
 
-    // Text Setup
+    // Add a very subtle dark vignette to make white text pop
+    // This also helps verify if overlay transparency is working
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // 30% black
+    ctx.fillRect(0, height * 0.2, width, height * 0.6); // Center area backdrop
+
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
 
-    // Simple text rendering
-    const lines = text.split('\n');
-    let y = height / 2 - (lines.length * 40);
+    const lines = text.split('\n\n');
+    let y = height / 2 - (lines.length * 60);
+
     lines.forEach(line => {
-        ctx.fillText(line, width / 2, y);
-        y += 100;
+        if (!line.trim()) return;
+        
+        // 1. Reshape Arabic
+        const reshaped = reshaper.ArabicShaper.convertArabic(line);
+        
+        // 2. Apply Bidi (RTL)
+        const bidiText = bidi.getReorderedString(reshaped, bidi.getEmbeddingLevels(reshaped));
+        
+        // 3. Render
+        ctx.fillText(bidiText, width / 2, y);
+        y += 150;
     });
 
     await PImage.encodePNGToStream(img, fs.createWriteStream(outputPath));
+    console.log('Text overlay created with Arabic support & transparency');
 };
 
 /**
@@ -85,6 +103,8 @@ const generateReel = async (options) => {
     const timestamp = Date.now();
     const finalOutputPath = path.join(OUTPUT_DIR, `reel_${timestamp}.mp4`);
     
+    console.log('Starting generateReel with background:', customBackgroundPath);
+
     // 1. Download audio files
     const audioFiles = [];
     for (const ayah of ayahs) {
@@ -107,60 +127,64 @@ const generateReel = async (options) => {
     });
 
     // 2. Prepare Background
-    let backgroundPath = customBackgroundPath;
+    let backgroundPath = options.backgroundPath;
+    let finalBackgroundPath = '';
     
-    // If custom background is provided, convert to video
     if (backgroundPath && fs.existsSync(backgroundPath)) {
-        console.log('Using custom background:', backgroundPath);
-        
-        // Check if it's already a video
+        console.log('Using custom background file:', backgroundPath);
         const ext = path.extname(backgroundPath).toLowerCase();
-        if (ext === '.jpg' || ext === '.png' || ext === '.jpeg') {
-            // Convert image to video
-            const videoBackgroundPath = path.join(TEMP_DIR, `bg_video_${timestamp}.mp4`);
+        
+        if (['.jpg', '.png', '.jpeg'].includes(ext)) {
+            console.log('Background is image, converting to video template (loop 1)...');
+            const videoPath = path.join(TEMP_DIR, `bg_vid_${timestamp}.mp4`);
             await new Promise((resolve, reject) => {
                 ffmpeg()
                     .input(backgroundPath)
-                    .loop(60)
+                    .inputOptions('-loop 1') // CRITICAL: Loop image input
                     .outputOptions([
                         '-pix_fmt yuv420p',
-                        '-t 60',
+                        '-t 30', // 30 seconds
                         '-vf scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
                     ])
-                    .save(videoBackgroundPath)
+                    .save(videoPath)
+                    .on('start', (cmd) => console.log('BG Conversion Command:', cmd))
                     .on('end', () => {
-                        console.log('Background image converted to video');
+                        console.log('BG Image converted successfully');
+                        finalBackgroundPath = videoPath;
                         resolve();
                     })
-                    .on('error', reject);
+                    .on('error', (err) => {
+                        console.error('BG Image conversion error:', err);
+                        reject(err);
+                    });
             });
-            backgroundPath = videoBackgroundPath;
+        } else {
+            console.log('Background is already a video or recognized format');
+            finalBackgroundPath = backgroundPath;
         }
-    } else {
-        // Create black background image using pureimage
-        console.log('No custom background, using default black');
-        const bgImagePath = path.join(TEMP_DIR, `bg_${timestamp}.png`);
-        const bgImg = PImage.make(1080, 1920);
-        const bgCtx = bgImg.getContext('2d');
-        bgCtx.fillStyle = '#000000';
-        bgCtx.fillRect(0, 0, 1080, 1920);
-        await PImage.encodePNGToStream(bgImg, fs.createWriteStream(bgImagePath));
-        
-        // Convert image to video
-        backgroundPath = path.join(TEMP_DIR, `bg_gen_${timestamp}.mp4`);
+    }
+
+    if (!finalBackgroundPath || !fs.existsSync(finalBackgroundPath)) {
+        console.log('Creating default black background video...');
+        const bgVideoPath = path.join(TEMP_DIR, `bg_black_${timestamp}.mp4`);
         await new Promise((resolve, reject) => {
             ffmpeg()
-                .input(bgImagePath)
-                .loop(60)
-                .outputOptions([
-                    '-pix_fmt yuv420p',
-                    '-t 60'
-                ])
-                .save(backgroundPath)
-                .on('end', resolve)
-                .on('error', reject);
+                .input('color=c=black:s=1080x1920:d=30')
+                .inputFormat('lavfi')
+                .outputOptions(['-pix_fmt yuv420p'])
+                .save(bgVideoPath)
+                .on('end', () => {
+                    finalBackgroundPath = bgVideoPath;
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error('Default BG error:', err);
+                    reject(err);
+                });
         });
     }
+
+    console.log('Final background path for assembly:', finalBackgroundPath);
 
     // 3. Create text overlays
     const fullText = ayahs.map(a => a.text).join('\n\n');
@@ -169,27 +193,39 @@ const generateReel = async (options) => {
 
     // 4. Final Assembly
     return new Promise((resolve, reject) => {
-        ffmpeg()
-            .input(backgroundPath)
+        const proc = ffmpeg()
+            .input(finalBackgroundPath)
             .inputOptions(['-stream_loop -1']) 
             .input(combinedAudioPath)
             .input(overlayPath)
             .complexFilter([
-                '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg]',
-                '[bg][2:v]overlay=0:0[vout]'
+                // Ensure overlay is handled as RGBA and scaled
+                '[2:v]scale=1080:1920[ovl]',
+                // Overlay on top of background
+                '[0:v][ovl]overlay=0:0[vout]'
             ])
             .outputOptions([
                 '-map [vout]',
                 '-map 1:a',
+                '-c:v libx264',
+                '-preset ultrafast',
+                '-crf 23',
+                '-pix_fmt yuv420p',
                 '-shortest' 
             ])
             .output(finalOutputPath)
-            .on('end', () => resolve(finalOutputPath))
-            .on('error', (err) => {
-                console.error('Final FFmpeg Error:', err);
-                reject(err);
+            .on('start', (cmd) => console.log('FFmpeg Final Command:', cmd))
+            .on('end', () => {
+                console.log('Video generation complete:', finalOutputPath);
+                resolve(finalOutputPath);
             })
-            .run();
+            .on('error', (err, stdout, stderr) => {
+                console.error('Final FFmpeg Error:', err);
+                console.error('FFmpeg Stderr:', stderr);
+                reject(err);
+            });
+            
+        proc.run();
     });
 };
 
