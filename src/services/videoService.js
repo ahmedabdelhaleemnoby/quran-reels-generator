@@ -36,6 +36,25 @@ const getMediaDuration = async (filePath) => {
 };
 
 /**
+ * Ensures a compatible Arabic font is available locally
+ */
+const ensureArabicFont = async () => {
+    const fontPath = path.join(TEMP_DIR, 'NotoNaskhArabic-Regular.ttf');
+    if (fs.existsSync(fontPath)) return fontPath;
+
+    console.log('Downloading compatible Arabic font (Noto Naskh Arabic)...');
+    const url = 'https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf';
+    try {
+        await downloadFile(url, fontPath);
+        console.log('Font downloaded successfully');
+        return fontPath;
+    } catch (error) {
+        console.warn('Failed to download Noto font, will use system fallback:', error.message);
+        return null;
+    }
+};
+
+/**
  * Downloads a file from a URL with improved resilience
  */
 const downloadFile = async (url, dest) => {
@@ -72,7 +91,7 @@ const downloadFile = async (url, dest) => {
 /**
  * Creates a text overlay image using pureimage with Arabic support
  */
-const createTextOverlay = async (text, outputPath) => {
+const createTextOverlay = async (text, outputPath, fontName = 'Standard') => {
     const reshaper = require('arabic-persian-reshaper');
     const bidiFactory = require('bidi-js');
     const bidi = bidiFactory();
@@ -82,14 +101,55 @@ const createTextOverlay = async (text, outputPath) => {
     const img = PImage.make(width, height);
     const ctx = img.getContext('2d');
 
-    // Load font
-    const fontPath = '/System/Library/Fonts/Supplemental/Arial.ttf';
-    let fontSize = 70; // Slightly larger font
-    if (fs.existsSync(fontPath)) {
-        const font = PImage.registerFont(fontPath, 'Arial');
-        await new Promise((resolve) => font.load(() => resolve()));
-        ctx.font = `${fontSize}pt 'Arial'`;
-    } else {
+    // Font selection logic with absolute resilience
+    const localFontPath = path.join(TEMP_DIR, 'NotoNaskhArabic-Regular.ttf');
+    const fontConfigs = {
+        'Standard': '/System/Library/Fonts/Supplemental/Arial.ttf',
+        'Modern': localFontPath,
+        'Kufi': '/System/Library/Fonts/Supplemental/KufiStandardGK.ttc'
+    };
+    
+    let fontPath = fontConfigs[fontName] || fontConfigs['Standard'];
+    let usedFontName = fontName;
+
+    // Loading font with try-catch to prevent "subtables[i]" crash
+    let fontLoaded = false;
+    const fontSize = 70;
+
+    try {
+        if (fs.existsSync(fontPath)) {
+            const font = PImage.registerFont(fontPath, usedFontName);
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Font load timeout')), 5000);
+                font.load(() => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+            });
+            ctx.font = `${fontSize}pt '${usedFontName}'`;
+            fontLoaded = true;
+        }
+    } catch (e) {
+        console.warn(`Font load failed for ${fontPath}:`, e.message);
+    }
+
+    // Fallback if the requested font failed
+    if (!fontLoaded) {
+        try {
+            console.log('Falling back to Arial...');
+            const fallbackPath = '/System/Library/Fonts/Supplemental/Arial.ttf';
+            if (fs.existsSync(fallbackPath)) {
+                const font = PImage.registerFont(fallbackPath, 'Arial');
+                await new Promise((resolve) => font.load(() => resolve()));
+                ctx.font = `${fontSize}pt 'Arial'`;
+                fontLoaded = true;
+            }
+        } catch (e) {
+            console.error('Arial fallback also failed:', e.message);
+        }
+    }
+
+    if (!fontLoaded) {
         ctx.font = `${fontSize}pt sans-serif`;
     }
 
@@ -155,7 +215,18 @@ const createTextOverlay = async (text, outputPath) => {
     allRenderLines.forEach(line => {
         if (line.trim()) {
             const bidiLine = processArabicText(line);
-            ctx.fillText(bidiLine, width / 2, y);
+            try {
+                ctx.fillText(bidiLine, width / 2, y);
+            } catch (err) {
+                console.warn('Text rendering failed for a line, attempting fallback:', err.message);
+                // Last ditch effort: try very basic rendering
+                try {
+                    ctx.font = `${fontSize}pt sans-serif`;
+                    ctx.fillText(bidiLine, width / 2, y);
+                } catch (e) {
+                    console.error('Final text rendering fallback failed:', e.message);
+                }
+            }
         }
         y += lineHeight;
     });
@@ -181,14 +252,45 @@ const fetchRandomBackground = async (outputPath) => {
 };
 
 /**
+ * Fetches random nature ambience audio
+ */
+const fetchAmbienceAudio = async (outputPath) => {
+    console.log('Fetching random nature ambience audio...');
+    // Using verified stable sources or fallbacks
+    const ambienceSources = [
+        'https://actions.google.com/sounds/v1/nature/rain_on_roof.ogg',
+        'https://actions.google.com/sounds/v1/nature/forest_ambience.ogg',
+        'https://actions.google.com/sounds/v1/nature/river_sound.ogg'
+    ];
+    
+    // Try each source until one works
+    for (const url of ambienceSources) {
+        try {
+            console.log(`Trying ambience source: ${url}`);
+            await downloadFile(url, outputPath);
+            console.log('Ambience audio fetched successfully');
+            return true;
+        } catch (error) {
+            console.warn(`Source failed (${url}): ${error.message}`);
+        }
+    }
+    
+    console.error('All ambience sources failed.');
+    return false;
+};
+
+/**
  * Processes the video generation
  */
 const generateReel = async (options) => {
-    const { reciterId, surahNumber, fromAyah, toAyah, ayahs, backgroundPath: customBackgroundPath } = options;
+    const { reciterId, surahNumber, fromAyah, toAyah, ayahs, backgroundPath: customBackgroundPath, fontName = 'Standard' } = options;
     const timestamp = Date.now();
     const finalOutputPath = path.join(OUTPUT_DIR, `reel_${timestamp}.mp4`);
     
     console.log('Starting generateReel. Resilience mode enabled.');
+
+    // Ensure Arabic font is ready
+    await ensureArabicFont();
 
     // 1. Download audio files with caching
     const audioFiles = [];
@@ -225,7 +327,7 @@ const generateReel = async (options) => {
     const totalDuration = durations.reduce((a, b) => a + b, 0);
 
     // Combine audio using fluent-ffmpeg
-    const combinedAudioPath = path.join(TEMP_DIR, `combined_${timestamp}.mp3`);
+    const recitationAudioPath = path.join(TEMP_DIR, `recitation_${timestamp}.mp3`);
     const ffmpegCombine = ffmpeg();
     audioFiles.forEach(file => ffmpegCombine.input(file));
     
@@ -233,8 +335,34 @@ const generateReel = async (options) => {
         ffmpegCombine
             .on('error', reject)
             .on('end', resolve)
-            .mergeToFile(combinedAudioPath, TEMP_DIR);
+            .mergeToFile(recitationAudioPath, TEMP_DIR);
     });
+
+    // 1b. Prepare Ambience Audio
+    const ambiencePath = path.join(TEMP_DIR, `ambience_${timestamp}.mp3`);
+    const hasAmbience = await fetchAmbienceAudio(ambiencePath);
+    const finalAudioPath = path.join(TEMP_DIR, `final_audio_${timestamp}.mp3`);
+
+    if (hasAmbience) {
+        console.log('Mixing recitation with ambience...');
+        await new Promise((resolve, reject) => {
+            ffmpeg()
+                .input(recitationAudioPath)
+                .input(ambiencePath)
+                .inputOptions(['-stream_loop', '-1']) // Loop ambience
+                .complexFilter([
+                    '[0:a]volume=1.0[v0]',
+                    '[1:a]volume=0.2[v1]', // Subtle ambience
+                    '[v0][v1]amix=inputs=2:duration=first[aout]'
+                ])
+                .outputOptions(['-map [aout]', '-t', totalDuration + 1])
+                .save(finalAudioPath)
+                .on('end', resolve)
+                .on('error', reject);
+        });
+    } else {
+        fs.copyFileSync(recitationAudioPath, finalAudioPath);
+    }
 
     // 2. Prepare Background
     let backgroundPath = options.backgroundPath;
@@ -286,17 +414,14 @@ const generateReel = async (options) => {
                 command.inputOptions(['-loop', '1', '-framerate', '25']);
             }
 
-            const vfParams = [
+            const vfParams = isAnimatedVideo ? [
                 'scale=1080:1920:force_original_aspect_ratio=increase',
                 'crop=1080:1920'
+            ] : [
+                'scale=1280:2276:force_original_aspect_ratio=increase',
+                'crop=1280:2276',
+                "zoompan=z='min(1.05+in*0.001,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920"
             ];
-
-            // Apply "Ken Burns" pulsing zoom effect only to static images
-            if (!isAnimatedVideo) {
-                // Pronounced movement: oscillating zoom (zoom in/out)
-                // z: oscillates between 1.15 and 1.55 for a dramatic effect
-                vfParams.push("zoompan=z='1.35+0.2*sin(in/35)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920");
-            }
 
             command
                 .outputOptions([
@@ -325,23 +450,26 @@ const generateReel = async (options) => {
         const duration = durations[i];
         const overlayPath = path.join(TEMP_DIR, `overlay_${timestamp}_${i}.png`);
         
-        await createTextOverlay(ayah.text, overlayPath);
+        await createTextOverlay(ayah.text, overlayPath, fontName);
         overlayFiles.push(overlayPath);
         
         overlayConfigs.push({
             path: overlayPath,
             start: currentTime,
-            end: currentTime + duration
+            end: currentTime + duration,
+            duration: duration
         });
         
         currentTime += duration;
     }
 
     return new Promise((resolve, reject) => {
-        const finalFfmpeg = ffmpeg().input(finalBackgroundPath).input(combinedAudioPath);
+        const finalFfmpeg = ffmpeg().input(finalBackgroundPath).input(finalAudioPath);
         
-        // Add all overlay files as inputs
-        overlayFiles.forEach(file => finalFfmpeg.input(file));
+        // Add all overlay files as inputs with looping enabled
+        overlayFiles.forEach(file => {
+            finalFfmpeg.input(file).inputOptions(['-loop', '1']);
+        });
 
         // Build complex filter for chaining overlays
         // [0:v] is background, [1:a] is audio
@@ -352,7 +480,14 @@ const generateReel = async (options) => {
         overlayConfigs.forEach((config, index) => {
             const inputIndex = index + 2; // +2 because 0 is bg, 1 is audio
             const outputName = `v${index}`;
-            filter += `[${inputIndex}:v]scale=1080:1920[ovl${index}];`;
+            const dur = config.duration;
+            const fadeInDur = Math.min(0.5, dur / 3);
+            const fadeOutDur = fadeInDur;
+            
+            // Apply scale and fade in/out using GLOBAL timestamps (config.start/end)
+            // st: start time, d: duration
+            filter += `[${inputIndex}:v]scale=1080:1920,fade=t=in:st=${config.start}:d=${fadeInDur}:alpha=1,fade=t=out:st=${config.end - fadeOutDur}:d=${fadeOutDur}:alpha=1[ovl${index}];`;
+            
             filter += `[${lastOutput}][ovl${index}]overlay=0:0:enable='between(t,${config.start},${config.end})'${index === overlayConfigs.length - 1 ? '[vout]' : `[${outputName}]`}`;
             if (index < overlayConfigs.length - 1) {
                 filter += ';';

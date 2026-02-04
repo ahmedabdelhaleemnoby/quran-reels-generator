@@ -56,7 +56,8 @@ const generateVideo = async (req, res) => {
             fromAyah,
             toAyah,
             ayahs,
-            backgroundPath
+            backgroundPath,
+            fontName: req.body.fontName || 'Modern' // Default to Modern (SF Arabic)
         });
 
         res.json({
