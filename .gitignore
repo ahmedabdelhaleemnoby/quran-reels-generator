@@ -1,6 +1,7 @@
 node_modules/
 output/
 uploads/
+audio_cache/
 .DS_Store
 *.log
 .env

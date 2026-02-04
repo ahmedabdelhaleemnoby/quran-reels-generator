@@ -4,7 +4,7 @@ const path = require('path');
 const videoController = require('./src/controllers/videoController');
 
 const app = express();
-const PORT = process.env.PORT || 3005;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({limit: '50mb'})); // Increase limit for base64 images

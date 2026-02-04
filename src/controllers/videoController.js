@@ -19,18 +19,19 @@ const generateVideo = async (req, res) => {
         
         // Check if user uploaded a background (base64)
         if (backgroundData && backgroundData.includes('base64,')) {
-            console.log('Received background image data');
+            console.log('Received background upload data');
             const timestamp = Date.now();
-            const matches = backgroundData.match(/^data:image\/(\w+);base64,(.+)$/);
+            const matches = backgroundData.match(/^data:(image|video)\/(\w+);base64,(.+)$/);
             if (matches) {
-                const ext = matches[1];
-                const base64Data = matches[2];
+                const type = matches[1];
+                const ext = matches[2];
+                const base64Data = matches[3];
                 const bgFileName = `bg_upload_${timestamp}.${ext}`;
                 backgroundPath = path.resolve(path.join(__dirname, '../../uploads', bgFileName));
                 fs.writeFileSync(backgroundPath, Buffer.from(base64Data, 'base64'));
-                console.log('Saved uploaded background to:', backgroundPath);
+                console.log(`Saved uploaded ${type} to:`, backgroundPath);
             } else {
-                console.warn('Invalid base64 image format received');
+                console.warn('Invalid base64 data format received');
             }
         } else {
             // Fallback to default backgrounds directory

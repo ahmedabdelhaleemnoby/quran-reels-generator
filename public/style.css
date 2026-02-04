@@ -11,6 +11,10 @@
     --success: #00e676;
 }
 
+.hidden {
+    display: none !important;
+}
+
 * {
     box-sizing: border-box;
     margin: 0;

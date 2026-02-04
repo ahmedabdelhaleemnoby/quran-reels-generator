@@ -6,9 +6,11 @@ const PImage = require('pureimage');
 
 const OUTPUT_DIR = path.join(__dirname, '../../output');
 const TEMP_DIR = path.join(__dirname, '../../uploads');
+const AUDIO_CACHE_DIR = path.join(__dirname, '../../audio_cache');
 
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
+if (!fs.existsSync(AUDIO_CACHE_DIR)) fs.mkdirSync(AUDIO_CACHE_DIR);
 
 /**
  * Validates if ffmpeg is available
@@ -22,21 +24,49 @@ const validateTools = async () => {
 };
 
 /**
- * Downloads a file from a URL
+ * Gets the duration of a media file in seconds
+ */
+const getMediaDuration = async (filePath) => {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+            if (err) reject(err);
+            else resolve(metadata.format.duration);
+        });
+    });
+};
+
+/**
+ * Downloads a file from a URL with improved resilience
  */
 const downloadFile = async (url, dest) => {
     const writer = fs.createWriteStream(dest);
-    const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream',
-        timeout: 120000 // 120 seconds timeout (increased from 30s)
-    });
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-    });
+    try {
+        const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream',
+            timeout: 120000, // 120 seconds
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+        
+        if (response.status !== 200) {
+            throw new Error(`Failed to download: HTTP ${response.status}`);
+        }
+
+        response.data.pipe(writer);
+        return new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', (err) => {
+                fs.unlink(dest, () => {}); // Clean up partial file
+                reject(err);
+            });
+        });
+    } catch (error) {
+        fs.unlink(dest, () => {}); // Clean up
+        throw error;
+    }
 };
 
 /**
@@ -85,7 +115,6 @@ const createTextOverlay = async (text, outputPath) => {
         for (let i = 1; i < words.length; i++) {
             const word = words[i];
             const testLine = currentLine + " " + word;
-            // Note: PureImage measureText is basic, using a rough estimate if it fails
             const metrics = ctx.measureText(processArabicText(testLine));
             if (metrics.width > maxWidth) {
                 lines.push(currentLine);
@@ -140,7 +169,6 @@ const createTextOverlay = async (text, outputPath) => {
  */
 const fetchRandomBackground = async (outputPath) => {
     console.log('Fetching random nature background from LoremFlickr...');
-    // Using nature, landscape, and sky tags to get relevant serenity
     const url = 'https://loremflickr.com/1080/1920/nature,landscape,sky/all';
     try {
         await downloadFile(url, outputPath);
@@ -160,16 +188,41 @@ const generateReel = async (options) => {
     const timestamp = Date.now();
     const finalOutputPath = path.join(OUTPUT_DIR, `reel_${timestamp}.mp4`);
     
-    console.log('Starting generateReel. Custom background:', customBackgroundPath || 'None');
+    console.log('Starting generateReel. Resilience mode enabled.');
 
-    // 1. Download audio files
+    // 1. Download audio files with caching
     const audioFiles = [];
+    const durations = [];
     for (const ayah of ayahs) {
-        const audioUrl = `https://www.everyayah.com/data/${reciterId}/${String(surahNumber).padStart(3, '0')}${String(ayah.numberInSurah).padStart(3, '0')}.mp3`;
+        const cacheFileName = `${reciterId}_${String(surahNumber).padStart(3, '0')}${String(ayah.numberInSurah).padStart(3, '0')}.mp3`;
+        const cachePath = path.join(AUDIO_CACHE_DIR, cacheFileName);
         const audioPath = path.join(TEMP_DIR, `audio_${timestamp}_${ayah.numberInSurah}.mp3`);
-        await downloadFile(audioUrl, audioPath);
-        audioFiles.push(audioPath);
+        
+        if (!fs.existsSync(cachePath)) {
+            const audioUrl = `https://www.everyayah.com/data/${reciterId}/${String(surahNumber).padStart(3, '0')}${String(ayah.numberInSurah).padStart(3, '0')}.mp3`;
+            try {
+                await downloadFile(audioUrl, cachePath);
+            } catch (e) {
+                console.warn(`Download failed for Ayah ${ayah.numberInSurah}, seeking local fallback...`);
+                // Check uploads for any existing file from previous runs
+                const uploaded = fs.readdirSync(TEMP_DIR).find(f => f.includes(`_${ayah.numberInSurah}.mp3`));
+                if (uploaded) {
+                    fs.copyFileSync(path.join(TEMP_DIR, uploaded), cachePath);
+                }
+            }
+        }
+
+        if (fs.existsSync(cachePath)) {
+            fs.copyFileSync(cachePath, audioPath);
+            const dur = await getMediaDuration(audioPath);
+            audioFiles.push(audioPath);
+            durations.push(dur);
+        } else {
+            throw new Error(`تعذر تحميل الصوت للآية ${ayah.numberInSurah}. تأكد من اتصال الإنترنت.`);
+        }
     }
+
+    const totalDuration = durations.reduce((a, b) => a + b, 0);
 
     // Combine audio using fluent-ffmpeg
     const combinedAudioPath = path.join(TEMP_DIR, `combined_${timestamp}.mp3`);
@@ -186,111 +239,107 @@ const generateReel = async (options) => {
     // 2. Prepare Background
     let backgroundPath = options.backgroundPath;
     let finalBackgroundPath = '';
+    let isAnimatedVideo = false;
     
-    // Case 1: User provides a background
+    // Priority 1: User Custom Background
     if (backgroundPath && fs.existsSync(backgroundPath)) {
         console.log('Processing custom background:', backgroundPath);
-    } else {
-        // Case 2: No custom background, fetch a random one
-        console.log('No custom background, fetching random nature image...');
-        const randomImgPath = path.join(TEMP_DIR, `random_bg_${timestamp}.jpg`);
-        const success = await fetchRandomBackground(randomImgPath);
-        if (success) {
-            backgroundPath = randomImgPath;
-        }
-    }
-
-    // Now process backgroundPath (whether custom or random)
-    if (backgroundPath && fs.existsSync(backgroundPath)) {
         const ext = path.extname(backgroundPath).toLowerCase();
+        if (['.mp4', '.mov', '.avi'].includes(ext)) isAnimatedVideo = true;
+    } else {
+        // Priority 2: Fetch Random Nature Image (JPG) from Internet
+        console.log('Seeking nature image background from LoremFlickr/Picsum...');
+        const natureImgPath = path.join(TEMP_DIR, `nature_img_${timestamp}.jpg`);
         
-        if (['.jpg', '.png', '.jpeg'].includes(ext)) {
-            console.log('Converting background image to video template...');
-            const videoPath = path.join(TEMP_DIR, `bg_vid_${timestamp}.mp4`);
-            await new Promise((resolve, reject) => {
-                ffmpeg()
-                    .input(backgroundPath)
-                    .inputOptions('-loop 1')
-                    .outputOptions([
-                        '-pix_fmt yuv420p',
-                        '-t 30',
-                        '-vf scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
-                    ])
-                    .save(videoPath)
-                    .on('end', () => {
-                        finalBackgroundPath = videoPath;
-                        resolve();
-                    })
-                    .on('error', (err) => {
-                        console.error('BG Image conversion error:', err);
-                        reject(err);
-                    });
-            });
+        let imgSuccess = await fetchRandomBackground(natureImgPath);
+        
+        // Backup image source: Picsum
+        if (!imgSuccess) {
+            console.log('LoremFlickr failed, trying Picsum...');
+            try {
+                await downloadFile('https://picsum.photos/1080/1920?nature,landscape', natureImgPath);
+                imgSuccess = true;
+            } catch (e) {
+                console.warn('Picsum also failed:', e.message);
+            }
+        }
+
+        if (imgSuccess) {
+            backgroundPath = natureImgPath;
+            isAnimatedVideo = false;
         } else {
-            finalBackgroundPath = backgroundPath;
+            // No custom background and internet fetch failed
+            // Throwing a clear error as requested by the user instead of silent fallback
+            throw new Error('تعذر جلب صور مناظر طبيعية من الإنترنت. يرجى التأكد من اتصال الإنترنت في الـ Terminal أو رفع خلفية مخصصة.');
         }
     }
 
-    // Final Fallback: Black background if everything fails
-    if (!finalBackgroundPath || !fs.existsSync(finalBackgroundPath)) {
-        console.log('Using default black background template...');
-        const bgVideoPath = path.join(TEMP_DIR, `bg_black_${timestamp}.mp4`);
+    // Process background into a video of correct duration and dimensions
+    if (backgroundPath && fs.existsSync(backgroundPath)) {
+        const bgVidPath = path.join(TEMP_DIR, `bg_processed_${timestamp}.mp4`);
         await new Promise((resolve, reject) => {
-            ffmpeg()
-                .input('color=c=black:s=1080x1920:d=30')
-                .inputFormat('lavfi')
-                .outputOptions(['-pix_fmt yuv420p'])
-                .save(bgVideoPath)
+            const command = ffmpeg().input(backgroundPath);
+            
+            if (isAnimatedVideo) {
+                command.inputOptions('-stream_loop', '-1');
+            } else {
+                command.inputOptions('-loop', '1', '-framerate', '25');
+            }
+
+            const vfParams = [
+                'scale=1080:1920:force_original_aspect_ratio=increase',
+                'crop=1080:1920'
+            ];
+
+            // Apply "Ken Burns" pulsing zoom effect only to static images
+            if (!isAnimatedVideo) {
+                // Pronounced movement: oscillating zoom (zoom in/out)
+                // z: oscillates between 1.15 and 1.55 for a dramatic effect
+                vfParams.push("zoompan=z='1.35+0.2*sin(in/35)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920");
+            }
+
+            command
+                .outputOptions([
+                    '-pix_fmt yuv420p',
+                    `-t ${totalDuration + 1}`,
+                    `-vf ${vfParams.join(',')}`
+                ])
+                .save(bgVidPath)
                 .on('end', () => {
-                    finalBackgroundPath = bgVideoPath;
+                    finalBackgroundPath = bgVidPath;
                     resolve();
                 })
                 .on('error', reject);
         });
     }
 
-    console.log('Final background path for assembly:', finalBackgroundPath);
-
-    // 3. Create text overlays
-    const fullText = ayahs.map(a => a.text).join('\n\n');
-    const overlayPath = path.join(TEMP_DIR, `overlay_${timestamp}.png`);
-    await createTextOverlay(fullText, overlayPath);
-
-    // 4. Final Assembly
+    // Final Assembly with Text Overlay
     return new Promise((resolve, reject) => {
-        const proc = ffmpeg()
-            .input(finalBackgroundPath)
-            .inputOptions(['-stream_loop -1']) 
-            .input(combinedAudioPath)
-            .input(overlayPath)
-            .complexFilter([
-                // Ensure overlay is handled as RGBA and scaled
-                '[2:v]scale=1080:1920[ovl]',
-                // Overlay on top of background
-                '[0:v][ovl]overlay=0:0[vout]'
-            ])
-            .outputOptions([
-                '-map [vout]',
-                '-map 1:a',
-                '-c:v libx264',
-                '-preset ultrafast',
-                '-crf 23',
-                '-pix_fmt yuv420p',
-                '-shortest' 
-            ])
-            .output(finalOutputPath)
-            .on('start', (cmd) => console.log('FFmpeg Final Command:', cmd))
-            .on('end', () => {
-                console.log('Video generation complete:', finalOutputPath);
-                resolve(finalOutputPath);
-            })
-            .on('error', (err, stdout, stderr) => {
-                console.error('Final FFmpeg Error:', err);
-                console.error('FFmpeg Stderr:', stderr);
-                reject(err);
-            });
-            
-        proc.run();
+        const fullText = ayahs.map(a => a.text).join('\n\n');
+        const overlayPath = path.join(TEMP_DIR, `overlay_${timestamp}.png`);
+        
+        createTextOverlay(fullText, overlayPath).then(() => {
+            ffmpeg()
+                .input(finalBackgroundPath)
+                .input(combinedAudioPath)
+                .input(overlayPath)
+                .complexFilter([
+                    '[2:v]scale=1080:1920[ovl]',
+                    '[0:v][ovl]overlay=0:0[vout]'
+                ])
+                .outputOptions([
+                    '-map [vout]',
+                    '-map 1:a',
+                    '-c:v libx264',
+                    '-preset ultrafast',
+                    '-crf 23',
+                    '-pix_fmt yuv420p',
+                    '-shortest'
+                ])
+                .save(finalOutputPath)
+                .on('end', () => resolve(finalOutputPath))
+                .on('error', reject);
+        }).catch(reject);
     });
 };
 
