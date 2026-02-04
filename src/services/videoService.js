@@ -281,9 +281,9 @@ const generateReel = async (options) => {
             const command = ffmpeg().input(backgroundPath);
             
             if (isAnimatedVideo) {
-                command.inputOptions('-stream_loop', '-1');
+                command.inputOptions(['-stream_loop', '-1']);
             } else {
-                command.inputOptions('-loop', '1', '-framerate', '25');
+                command.inputOptions(['-loop', '1', '-framerate', '25']);
             }
 
             const vfParams = [
@@ -313,33 +313,73 @@ const generateReel = async (options) => {
         });
     }
 
-    // Final Assembly with Text Overlay
-    return new Promise((resolve, reject) => {
-        const fullText = ayahs.map(a => a.text).join('\n\n');
-        const overlayPath = path.join(TEMP_DIR, `overlay_${timestamp}.png`);
+    // Final Assembly with Synchronized Ayah Overlays
+    console.log('Final Assembly: Creating individual overlays for each ayah...');
+    
+    const overlayFiles = [];
+    let currentTime = 0;
+    const overlayConfigs = [];
+
+    for (let i = 0; i < ayahs.length; i++) {
+        const ayah = ayahs[i];
+        const duration = durations[i];
+        const overlayPath = path.join(TEMP_DIR, `overlay_${timestamp}_${i}.png`);
         
-        createTextOverlay(fullText, overlayPath).then(() => {
-            ffmpeg()
-                .input(finalBackgroundPath)
-                .input(combinedAudioPath)
-                .input(overlayPath)
-                .complexFilter([
-                    '[2:v]scale=1080:1920[ovl]',
-                    '[0:v][ovl]overlay=0:0[vout]'
-                ])
-                .outputOptions([
-                    '-map [vout]',
-                    '-map 1:a',
-                    '-c:v libx264',
-                    '-preset ultrafast',
-                    '-crf 23',
-                    '-pix_fmt yuv420p',
-                    '-shortest'
-                ])
-                .save(finalOutputPath)
-                .on('end', () => resolve(finalOutputPath))
-                .on('error', reject);
-        }).catch(reject);
+        await createTextOverlay(ayah.text, overlayPath);
+        overlayFiles.push(overlayPath);
+        
+        overlayConfigs.push({
+            path: overlayPath,
+            start: currentTime,
+            end: currentTime + duration
+        });
+        
+        currentTime += duration;
+    }
+
+    return new Promise((resolve, reject) => {
+        const finalFfmpeg = ffmpeg().input(finalBackgroundPath).input(combinedAudioPath);
+        
+        // Add all overlay files as inputs
+        overlayFiles.forEach(file => finalFfmpeg.input(file));
+
+        // Build complex filter for chaining overlays
+        // [0:v] is background, [1:a] is audio
+        // [2:v], [3:v]... are overlays
+        let filter = '[0:v]scale=1080:1920[base];';
+        let lastOutput = 'base';
+
+        overlayConfigs.forEach((config, index) => {
+            const inputIndex = index + 2; // +2 because 0 is bg, 1 is audio
+            const outputName = `v${index}`;
+            filter += `[${inputIndex}:v]scale=1080:1920[ovl${index}];`;
+            filter += `[${lastOutput}][ovl${index}]overlay=0:0:enable='between(t,${config.start},${config.end})'${index === overlayConfigs.length - 1 ? '[vout]' : `[${outputName}]`}`;
+            if (index < overlayConfigs.length - 1) {
+                filter += ';';
+            }
+            lastOutput = outputName;
+        });
+
+        finalFfmpeg
+            .complexFilter(filter)
+            .outputOptions([
+                '-map [vout]',
+                '-map 1:a',
+                '-c:v libx264',
+                '-preset ultrafast',
+                '-crf 23',
+                '-pix_fmt yuv420p',
+                '-shortest'
+            ])
+            .save(finalOutputPath)
+            .on('end', () => {
+                console.log('Video generation complete:', finalOutputPath);
+                resolve(finalOutputPath);
+            })
+            .on('error', (err) => {
+                console.error('Final FFmpeg Error:', err);
+                reject(err);
+            });
     });
 };
 
